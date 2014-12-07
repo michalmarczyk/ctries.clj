@@ -94,4 +94,4 @@ submit to ctries.clj becoming part of the Clojure project.
 
 Copyright © 2014 Michał Marczyk
 
-Distributed under the Eclipse Public License version 1.0.
+Distributed under the Apache License, Version 2.0.
