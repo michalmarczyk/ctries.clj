@@ -1,19 +1,14 @@
 (ns ctries.clj
+  (:refer-clojure :exclude [hash])
   (:import (java.util.concurrent.atomic AtomicReferenceFieldUpdater)
            (java.util Iterator)
-           (clojure.lang Box IPersistentMap MapEntry RT Util APersistentMap)))
+           (clojure.lang IPersistentMap MapEntry RT Util APersistentMap)))
 
 (set! *warn-on-reflection* true)
-(set! *unchecked-math* true)
+(set! *unchecked-math* :warn-on-boxed)
 
-(defn ^:private box ^clojure.lang.Box [x]
-  (Box. x))
-
-(defn ^:private unbox [^Box b]
-  (.-val b))
-
-(defn ^:private box-set! [^Box b x]
-  (set! (.-val b) x))
+(defmacro hash [x]
+  `(Util/hasheq ~x))
 
 (deftype RESTART    [])
 (deftype NOTFOUND   [])
@@ -149,8 +144,7 @@
      int
      ctries.clj.IIndirectionNode
      ctries.clj.Gen]
-    ;; FIXME: good enough approx to Option?
-    clojure.lang.Box]
+    ctries.clj.IMaybe]
    [recLookup
     [ctries.clj.IIndirectionNode
      Object
@@ -168,8 +162,8 @@
      ctries.clj.IIndirectionNode
      ctries.clj.Gen]
     ctries.clj.IMaybe]
-   [insertHash   [Object Object int]        boolean]
-   [insertIfHash [Object Object int Object] clojure.lang.Box]
+   [insertHash   [Object Object int]        void]
+   [insertIfHash [Object Object int Object] ctries.clj.IMaybe]
    [lookupHash   [Object int]               Object]
    [removeHash   [Object Object int]        ctries.clj.IMaybe]
    [clean [ctries.clj.IIndirectionNode int ctries.clj.Gen] void]
@@ -463,7 +457,7 @@
   (get [this k]
     (let [v (get kvs k this)]
       (if (identical? v this)
-        nil
+        (Nothing.)
         (Just. v)))))
 
 (def ^:private ^AtomicReferenceFieldUpdater hash-collision-node-prev-updater
@@ -500,7 +494,10 @@
               (let [g  (.gen ^IIndirectionNode inode)
                     rn (if (identical? g (.-gen ^BitmapIndexedNode m))
                          m
-                         (.renewed ^BitmapIndexedNode m g this))])
+                         (.renewed ^BitmapIndexedNode m g this))
+                    m' (.insertedAt ^BitmapIndexedNode rn
+                         pos flag (SingletonNode. k v h) g)]
+                (.gcas this inode m m'))
               (let [arr   (.-array ^BitmapIndexedNode m)
                     child (aget ^objects arr pos)]
                 (cond
@@ -526,8 +523,14 @@
                       (let [rn (if (identical? g (.-gen ^BitmapIndexedNode m))
                                  m
                                  (.renewed ^BitmapIndexedNode m g this))
-                            m' (.insertedAt ^BitmapIndexedNode rn
-                                 pos flag (SingletonNode. k v h) g)]
+                            m' (.updatedAt ^BitmapIndexedNode rn pos
+                                 (.inode inode
+                                   (.dual ^BitmapIndexedNode rn
+                                     child (.-h ^SingletonNode child)
+                                     (SingletonNode. k v h) h
+                                     (+ shift 5)
+                                     g))
+                                 g)]
                         (.gcas this inode m m'))))))))
 
           (instance? TombNode m)
@@ -556,12 +559,12 @@
                       rn (if (identical? (.-gen ^BitmapIndexedNode m) g)
                            m
                            (.renewed ^BitmapIndexedNode m g this))
-                      m' (.insertedAt ^BitmapIndexedNode m
+                      m' (.insertedAt ^BitmapIndexedNode rn
                            pos flag (SingletonNode. k v h) g)]
                   (if (.gcas this inode m m')
-                    (box nil)
+                    (Nothing.)
                     nil))
-                (box nil))
+                (Nothing.))
               (let [child (aget ^objects (.-array ^BitmapIndexedNode m) pos)]
                 (cond
                   (instance? IndirectionNode child)
@@ -571,8 +574,7 @@
                       (recur child inode (+ shift 5))
 
                       (.gcas this inode m
-                        (.renewed ^BitmapIndexedNode m
-                          (.gen ^IIndirectionNode inode) this))
+                        (.renewed ^BitmapIndexedNode m startgen this))
                       (recur inode parent shift)
 
                       :else nil))
@@ -587,7 +589,7 @@
                               (.updatedAt ^BitmapIndexedNode m
                                 pos (SingletonNode. k v h)
                                 (.gen ^IIndirectionNode inode)))
-                          (box (.-v child))
+                          (Just. (.-v child))
                           nil)
                         (let [g  (.gen ^IIndirectionNode inode)
                               rn (if (identical? (.-gen ^BitmapIndexedNode m) g)
@@ -603,13 +605,13 @@
                                        g))
                                    g)]
                           (if (.gcas this inode m m')
-                            (box nil)
+                            (Nothing.)
                             nil)))
 
                       KEYABSENT
                       (if (and (== (.-h child) h)
                                (= (.-k child) k))
-                        (box (.-v child))
+                        (Just. (.-v child))
                         (let [g  (.gen ^IIndirectionNode inode)
                               rn (if (identical? (.-gen ^BitmapIndexedNode m) g)
                                    m
@@ -624,7 +626,7 @@
                                        g))
                                    g)]
                           (if (.gcas this inode m m')
-                            (box nil)
+                            (Nothing.)
                             nil)))
 
                       KEYPRESENT
@@ -634,21 +636,20 @@
                               (.updatedAt ^BitmapIndexedNode m
                                 pos (SingletonNode. k v h)
                                 (.gen ^IIndirectionNode inode)))
-                          (box (.-v child))
+                          (Just. (.-v child))
                           nil)
-                        (box nil))
+                        (Nothing.))
 
-                      (let [v condition]
-                        (if (and (== (.-h child) h)
-                                 (= (.-k child) k)
-                                 (= (.-v child) v))
-                          (if (.gcas this inode m
-                                (.updatedAt ^BitmapIndexedNode m
-                                  pos (SingletonNode. k v h)
-                                  (.gen ^IIndirectionNode inode)))
-                            (box v)
-                            nil)
-                          (box nil)))))))))
+                      (if (and (== (.-h child) h)
+                               (= (.-k child) k)
+                               (= (.-v child) condition))
+                        (if (.gcas this inode m
+                              (.updatedAt ^BitmapIndexedNode m
+                                pos (SingletonNode. k v h)
+                                (.gen ^IIndirectionNode inode)))
+                          (Just. (.-v child))
+                          nil)
+                        (Nothing.))))))))
 
           (instance? TombNode m)
           (do
@@ -667,7 +668,7 @@
               KEYABSENT
               (if (nil? b)
                 (if (inserted*)
-                  (box nil)
+                  (Nothing.)
                   nil)
                 b)
 
@@ -678,7 +679,7 @@
                 :else       nil)
 
               (let [v condition]
-                (if (and (not (nil? b)) (= v (unbox b)))
+                (if (and (just? b) (= v (from-just b)))
                   (if (inserted*)
                     b
                     nil)
@@ -730,9 +731,10 @@
               RESTART))
 
           (instance? HashCollisionNode m)
-          (if-let [b (.get ^HashCollisionNode m k)]
-            (unbox b)
-            NOTFOUND)))))
+          (let [b (.get ^HashCollisionNode m k)]
+            (if (just? b)
+              (from-just b)
+              NOTFOUND))))))
 
   (recRemove [this inode k v h shift parent startgen]
     (let [m (.gcasRead this inode)]
@@ -994,16 +996,22 @@
 
   java.util.concurrent.ConcurrentMap
   (putIfAbsent [this k v]
-    (.insertIfHash this k v (hash k) KEYABSENT))
+    (let [maybe (.insertIfHash this k v (hash k) KEYABSENT)]
+      (if (just? maybe)
+        (from-just maybe)
+        nil)))
 
   (remove [this k v]
-    (boolean (.removeHash this k v (hash k))))
+    (just? (.removeHash this k v (hash k))))
 
   (replace [this k v]
-    (.insertIfHash this k v (hash k) KEYPRESENT))
+    (let [maybe (.insertIfHash this k v (hash k) KEYPRESENT)]
+      (if (just? maybe)
+        (from-just maybe)
+        nil)))
 
   (replace [this k old-v new-v]
-    (boolean (.insertIfHash this k new-v (hash k) old-v)))
+    (just? (.insertIfHash this k new-v (hash k) old-v)))
 
   java.util.Map
   (clear [this]
@@ -1059,9 +1067,10 @@
       (java.util.HashSet. ks)))
 
   (put [this k v]
-    (if-let [b (.insertIfHash this k v (hash k) nil)]
-      (unbox b)
-      nil))
+    (let [b (.insertIfHash this k v (hash k) nil)]
+      (if (just? b)
+        (from-just b)
+        nil)))
 
   (putAll [this m]
     (let [iter (.. m (entrySet) (iterator))]
@@ -1070,7 +1079,10 @@
           (.put this (.getKey e) (.getValue e))))))
 
   (remove [this k]
-    (.removeHash this k nil (hash k)))
+    (let [ret (.removeHash this k nil (hash k))]
+      (if (just? ret)
+        (from-just ret)
+        nil)))
 
   (size [this]
     (let [iter (.. this (readOnlySnapshot) (iterator))]
@@ -1146,7 +1158,7 @@
     this)
 
   (assoc [this k v]
-    (.put this k v)
+    (.insertHash this k v (hash k))
     this)
 
   (without [this k]
@@ -1228,9 +1240,9 @@
         (set! current nil))))
 
   (checkSubiter [this]
-    (if-not (.hasNext subiter)
-      (set! subiter nil))
-    (.advance this))
+    (when-not (.hasNext subiter)
+      (set! subiter nil)
+      (.advance this)))
 
   (advance [this]
     (if (neg? depth)
@@ -1426,15 +1438,15 @@
 (defn ^Ctrie concurrent-map
   "Returns a new concurrent map containing the given keyvals."
   ([]
-     (let [gen (Gen.)]
-       (Ctrie. (new-root-node) false)))
+     (Ctrie. (new-root-node) false))
   ([& keyvals]
-     (let [out ^java.util.Map (concurrent-map)]
+     (let [out ^Ctrie (concurrent-map)]
        (loop [in (seq keyvals)]
          (if in
            (if-let [nin (next in)]
-             (do
-               (.put out (first in) (first nin))
+             (let [k (first in)
+                   h (hash k)]
+               (.insertHash out (first in) (first nin) h)
                (recur (next nin)))
              (throw (IllegalArgumentException.
                      (str "No value supplied for key: " (pr-str (first in))))))

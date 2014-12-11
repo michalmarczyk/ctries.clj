@@ -1,4 +1,4 @@
-(defproject ctries.clj "0.0.1"
+(defproject ctries.clj "0.0.2"
   :description "Clojure implementation of Ctries"
   :url "https://github.com/michalmarczyk/ctries.clj"
   :license {:name "Apache License, Version 2.0"

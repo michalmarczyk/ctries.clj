@@ -1,5 +1,7 @@
 # ctries.clj
 
+[![Clojars Project](http://clojars.org/ctries.clj/latest-version.svg)](http://clojars.org/ctries.clj)
+
 A Clojure port of
 [the original (Scala) implementation of Ctries](https://github.com/axel22/Ctries)
 – concurrently modifiable, lock-free ("global progress guaranteed"),
