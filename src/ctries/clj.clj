@@ -7,7 +7,7 @@
 (set! *warn-on-reflection* true)
 (set! *unchecked-math* :warn-on-boxed)
 
-(defmacro hash [x]
+(defmacro ^:private hash [x]
   `(Util/hasheq ~x))
 
 (deftype RESTART    [])
