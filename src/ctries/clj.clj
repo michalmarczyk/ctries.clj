@@ -22,10 +22,6 @@
 ;; types
 
 (gen-interface
-  :name ctries.clj.IMaybe
-  :methods [])
-
-(gen-interface
   :name ctries.clj.IMainNode
   :methods
   [[makePrevUpdater []
@@ -95,7 +91,7 @@
   :methods
   [[inserted [Object Object] ctries.clj.IHashCollisionNode]
    [removed  [Object]        Object]
-   [get      [Object]        ctries.clj.IMaybe]])
+   [get      [Object]        Object]])
 
 (gen-interface
  :name ctries.clj.RDCSSDescriptor
@@ -144,7 +140,7 @@
      int
      ctries.clj.IIndirectionNode
      ctries.clj.Gen]
-    ctries.clj.IMaybe]
+    Object]
    [recLookup
     [ctries.clj.IIndirectionNode
      Object
@@ -161,11 +157,11 @@
      int
      ctries.clj.IIndirectionNode
      ctries.clj.Gen]
-    ctries.clj.IMaybe]
+    Object]
    [insertHash   [Object Object int]        void]
-   [insertIfHash [Object Object int Object] ctries.clj.IMaybe]
+   [insertIfHash [Object Object int Object] Object]
    [lookupHash   [Object int]               Object]
-   [removeHash   [Object Object int]        ctries.clj.IMaybe]
+   [removeHash   [Object Object int]        Object]
    [clean [ctries.clj.IIndirectionNode int ctries.clj.Gen] void]
    [compress
     [ctries.clj.IBitmapIndexedNode int ctries.clj.Gen]
@@ -187,23 +183,20 @@
 (import (ctries.clj
           ICtrie GCAS RDCSS RDCSSDescriptor ICtrieIterator
           IIndirectionNode IMainNode IKVNode
-          IBitmapIndexedNode IHashCollisionNode
-          IMaybe))
+          IBitmapIndexedNode IHashCollisionNode))
 
-(deftype Just [x]
-  IMaybe)
+(deftype Just [x])
 
-(deftype Nothing []
-  IMaybe)
+(deftype Nothing [])
 
-(defn ^:private just? [x]
-  (instance? Just x))
+(defmacro ^:private just? [x]
+  `(instance? Just ~x))
 
-(defn ^:private nothing? [x]
-  (instance? Nothing x))
+(defmacro ^:private nothing? [x]
+  `(identical? Nothing ~x))
 
-(defn ^:private from-just [x]
-  (.-x ^Just x))
+(defmacro ^:private from-just [x]
+  `(.-x ~(with-meta x {:tag 'ctries.clj.Just})))
 
 (deftype Descriptor [^ctries.clj.IIndirectionNode ov
                      ^ctries.clj.IMainNode ovmain
@@ -457,7 +450,7 @@
   (get [this k]
     (let [v (get kvs k this)]
       (if (identical? v this)
-        (Nothing.)
+        Nothing
         (Just. v)))))
 
 (def ^:private ^AtomicReferenceFieldUpdater hash-collision-node-prev-updater
@@ -562,9 +555,9 @@
                       m' (.insertedAt ^BitmapIndexedNode rn
                            pos flag (SingletonNode. k v h) g)]
                   (if (.gcas this inode m m')
-                    (Nothing.)
+                    Nothing
                     nil))
-                (Nothing.))
+                Nothing)
               (let [child (aget ^objects (.-array ^BitmapIndexedNode m) pos)]
                 (cond
                   (instance? IndirectionNode child)
@@ -605,7 +598,7 @@
                                        g))
                                    g)]
                           (if (.gcas this inode m m')
-                            (Nothing.)
+                            Nothing
                             nil)))
 
                       KEYABSENT
@@ -626,7 +619,7 @@
                                        g))
                                    g)]
                           (if (.gcas this inode m m')
-                            (Nothing.)
+                            Nothing
                             nil)))
 
                       KEYPRESENT
@@ -638,7 +631,7 @@
                                 (.gen ^IIndirectionNode inode)))
                           (Just. (.-v child))
                           nil)
-                        (Nothing.))
+                        Nothing)
 
                       (if (and (== (.-h child) h)
                                (= (.-k child) k)
@@ -649,7 +642,7 @@
                                 (.gen ^IIndirectionNode inode)))
                           (Just. (.-v child))
                           nil)
-                        (Nothing.))))))))
+                        Nothing)))))))
 
           (instance? TombNode m)
           (do
@@ -668,7 +661,7 @@
               KEYABSENT
               (if (nil? b)
                 (if (inserted*)
-                  (Nothing.)
+                  Nothing
                   nil)
                 b)
 
@@ -744,7 +737,7 @@
               bmp  (.-bitmap ^BitmapIndexedNode m)
               flag (bit-shift-left 1 idx)]
           (if (zero? (bit-and bmp flag))
-            (Nothing.)
+            Nothing
             (let [pos (Integer/bitCount (bit-and bmp (dec flag)))
                   sub (aget ^objects (.-array ^BitmapIndexedNode m) pos)
                   ret (cond
@@ -775,7 +768,7 @@
                               (if (.gcas this inode m nc)
                                 (Just. (.-v sub))
                                 nil))
-                            (Nothing.))))]
+                            Nothing)))]
               (cond
                 (or (nil? ret) (nothing? ret))
                 ret
@@ -827,7 +820,7 @@
               (if (.gcas this inode m m')
                 b
                 nil))
-            (Nothing.))))))
+            Nothing)))))
 
   (insertHash [this k v h]
     (loop []
