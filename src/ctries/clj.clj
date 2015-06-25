@@ -43,8 +43,6 @@
   :methods
   [[makeMainNodeUpdater []
     java.util.concurrent.atomic.AtomicReferenceFieldUpdater]
-   [makeGenUpdater []
-    java.util.concurrent.atomic.AtomicReferenceFieldUpdater]
    [cas [ctries.clj.IMainNode ctries.clj.IMainNode] boolean]
    [getMain []                     ctries.clj.IMainNode]
    [setMain [ctries.clj.IMainNode] void]
@@ -249,18 +247,13 @@
   (getValue [this]
     v))
 
-(declare
-  ^AtomicReferenceFieldUpdater indirection-node-mnode-updater
-  ^AtomicReferenceFieldUpdater indirection-node-gen-updater)
+(declare ^AtomicReferenceFieldUpdater indirection-node-mnode-updater)
 
 (deftype IndirectionNode [^:volatile-mutable ^IMainNode mnode
-                          ^:volatile-mutable ^Gen gen]
+                          ^Gen gen]
   IIndirectionNode
   (makeMainNodeUpdater [this]
     (AtomicReferenceFieldUpdater/newUpdater IndirectionNode Object "mnode"))
-
-  (makeGenUpdater [this]
-    (AtomicReferenceFieldUpdater/newUpdater IndirectionNode Object "gen"))
 
   (cas [this o n]
     (.compareAndSet indirection-node-mnode-updater this o n))
@@ -279,9 +272,6 @@
 
 (def ^:private ^AtomicReferenceFieldUpdater indirection-node-mnode-updater
   (.makeMainNodeUpdater (IndirectionNode. nil nil)))
-
-(def ^:private ^AtomicReferenceFieldUpdater indirection-node-gen-updater
-  (.makeGenUpdater (IndirectionNode. nil nil)))
 
 (declare
   ^AtomicReferenceFieldUpdater bitmap-indexed-node-prev-updater
