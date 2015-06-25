@@ -1061,8 +1061,10 @@
   (putAll [this m]
     (let [iter (.. m (entrySet) (iterator))]
       (while (.hasNext iter)
-        (let [e ^java.util.Map$Entry (.next iter)]
-          (.put this (.getKey e) (.getValue e))))))
+        (let [e ^java.util.Map$Entry (.next iter)
+              k (.getKey e)]
+          #_(.put this (.getKey e) (.getValue e))
+          (.insertHash this k (.getValue e) (hash k))))))
 
   (remove [this k]
     (let [ret (.removeHash this k nil (hash k))]
@@ -1126,8 +1128,10 @@
   (conj [this o]
     (cond
       (instance? java.util.Map$Entry o)
-      (let [e ^java.util.Map$Entry o]
-        (.put this (.getKey e) (.getValue e)))
+      (let [e ^java.util.Map$Entry o
+            k (.getKey e)]
+        #_(.put this (.getKey e) (.getValue e))
+        (.insertHash this k (.getValue e) (hash k)))
 
       (instance? clojure.lang.IPersistentVector o)
       (let [v ^clojure.lang.IPersistentVector o]
@@ -1135,12 +1139,17 @@
           (throw
             (IllegalArgumentException.
               "Vector arg to map conj must be a pair"))
-          (.put this (.nth v 0) (.nth v 1))))
+          #_(.put this (.nth v 0) (.nth v 1))
+          (let [k (.nth v 0)
+                v (.nth v 1)]
+            (.insertHash this k v (hash k)))))
 
       ;; assuming it's seqable
       :else
       (doseq [^java.util.Map$Entry e (seq o)]
-        (.put this (.getKey e) (.getValue e))))
+        #_(.put this (.getKey e) (.getValue e))
+        (let [k (.getKey e)]
+          (.insertHash this k (.getValue e) (hash k)))))
     this)
 
   (assoc [this k v]
