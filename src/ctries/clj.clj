@@ -1,7 +1,7 @@
 (ns ctries.clj
   (:refer-clojure :exclude [hash])
   (:import (java.util.concurrent.atomic AtomicReferenceFieldUpdater)
-           (java.util Iterator)
+           (java.util Iterator Collections)
            (clojure.lang IPersistentMap MapEntry RT Util APersistentMap)))
 
 (set! *warn-on-reflection* true)
@@ -1019,9 +1019,12 @@
   (containsValue [this v]
     (some #(= % v) (.values this)))
 
+  ;; FIXME: this should be backed by the map and support .remove etc.
   (entrySet [this]
     (let [iter (.. this (readOnlySnapshot) (iterator))]
-      (java.util.HashSet. ^clojure.lang.IteratorSeq (iterator-seq iter))))
+      (if-let [iseq ^clojure.lang.IteratorSeq (iterator-seq iter)]
+        (Collections/unmodifiableSet (java.util.HashSet. iseq))
+        #{})))
 
   (equals [this that]
     (cond
